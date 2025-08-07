@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>NPC Bullet Dodge & Duel</title>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@500&display=swap" rel="stylesheet" />
+<style>
+  /* Reset y estilos base */
+  * { box-sizing: border-box; margin:0; padding:0; font-family:'Rubik', sans-serif; }
+  body, html { height: 100%; overflow: hidden; background: linear-gradient(135deg, #1e153a, #2e1f4c); position: relative; color:#fff; }
+  #particleCanvas { position: fixed; top:0; left:0; width:100vw; height:100vh; pointer-events:none; z-index:0; }
+  #appContainer { position: relative; z-index:10; min-height: 100vh; display:flex; flex-direction: column; align-items: center; justify-content: center; padding:20px; }
+  h1 { font-size: 48px; margin-bottom: 20px; text-align: center; text-shadow: 0 0 6px #f8f4e1; }
+  .fade-slide-in { animation: fadeSlideIn 0.5s ease forwards; }
+  .fade-slide-out { animation: fadeSlideOut 0.5s ease forwards; }
+  @keyframes fadeSlideIn {
+    from { opacity:0; transform: translateY(20px); }
+    to { opacity:1; transform: translateY(0); }
+  }
+  @keyframes fadeSlideOut {
+    from { opacity:1; transform: translateY(0); }
+    to { opacity:0; transform: translateY(20px); }
+  }
+  .menu, #gameUI {
+    background-color: rgba(255,255,255,0.05);
+    padding: 30px;
+    border-radius: 16px;
+    box-shadow: 0 0 15px rgba(0,0,0,0.5);
+    min-width: 320px;
+    text-align: center;
+  }
+  .menu { display:flex; flex-direction: column; gap: 15px; }
+  .menu button, #gameUI button, #gameUI select {
+    padding: 12px 25px;
+    background-color: #f8f4e1;
+    color: #1e153a;
+    font-size: 18px;
+    border:none;
+    border-radius: 10px;
+    cursor:pointer;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease, transform 0.15s ease;
+    appearance:none;
+  }
+  .menu button:hover, #gameUI button:hover, #gameUI select:hover {
+    background-color: #e2dbc9;
+    box-shadow: 0 0 10px #f8f4e1;
+    transform: scale(1.05);
+  }
+  #gameUI label { display:block; margin:8px 0 4px; font-weight: 500; color:#f8f4e1; text-shadow: 0 0 5px #a07a00; }
+  #gameCanvas {
+    border: 2px solid #444;
+    margin-top: 10px;
+    background-color: #1e1e1e;
+    border-radius: 10px;
+    display: none;
+    box-shadow: 0 0 25px 5px #ff7a00aa;
+  }
+  #status, #scoreRecord, #controlsInfo {
+    margin-top: 8px;
+    font-size: 16px;
+    color: #ccc;
+    min-width: 320px;
+    text-align: center;
+    user-select: none;
+  }
+  #countdownOverlay {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 96px;
+    font-weight: 700;
+    color: #f8f4e1;
+    text-shadow: 0 0 12px #f8f4e1;
+    pointer-events: none;
+    user-select: none;
+    display: none;
+    z-index: 1000;
+  }
+  .footer { position: absolute; bottom: 15px; font-size: 12px; color: #bbb; }
+
+  /* Barras salud */
+  #healthBars {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 10px;
+    width: 800px;
+    max-width: 95vw;
+  }
+  .healthBar {
+    width: 48%;
+    height: 20px;
+    background: #333;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: inset 0 0 5px #000;
+  }
+  .healthFill {
+    height: 100%;
+    width: 100%;
+    background: limegreen;
+    transition: width 0.3s ease;
+  }
+  .healthLabel {
+    text-align: center;
+    margin-top: 4px;
+    font-weight: 700;
+    user-select: none;
+  }
+  #virtualKeyboard {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  user-select: none;
+  z-index: 999;
+  font-family: 'Rubik', sans-serif;
+}
+
+.vk-row {
+  display: flex;
+  justify-content: center;
+  margin: 2px 0;
+}
+
+.vk-key {
+  width: 40px;
+  height: 40px;
+  margin: 2px;
+  background: #222;
+  color: #ccc;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+  box-shadow: inset 0 0 5px #000;
+}
+
+.vk-key.active {
+  background: #00d0ff;
+  color: #fff;
+  box-shadow: 0 0 12px #00d0ff;
+}
+
+
+</style>
+</head>
+<body>
+
+<canvas id="particleCanvas"></canvas>
+
+<div id="appContainer">
+  <h1>NPC Bullet Dodge & Duel</h1>
+
+  <!-- Menú principal -->
+  <div class="menu fade-slide-in" id="mainMenu">
+    <button id="startDodgeBtn">Modo Dodge (Esquivar)</button>
+    <button id="startDuelBtn">Modo Duel (Lucha)</button>
+  </div>
+
+  <!-- UI juego -->
+  <div id="gameUI" class="fade-slide-in" style="display:none;">
+    <label for="npcModeSelect">NPC Mode:</label>
+    <select id="npcModeSelect">
+      <option value="pacifista">Pacifista</option>
+      <option value="normal" selected>Normal</option>
+      <option value="rage">Rage</option>
+    </select>
+
+    <label for="npcMoveSelect">NPC se mueve:</label>
+    <select id="npcMoveSelect">
+      <option value="yes" selected>Sí</option>
+      <option value="no">No</option>
+    </select>
+
+    <label for="controlSchemeSelect">Controles:</label>
+    <select id="controlSchemeSelect">
+      <option value="wasd" selected>WASD</option>
+      <option value="arrows">Flechas</option>
+    </select>
+
+    <button id="resetBtn">Reiniciar Juego</button>
+    <button id="backMenuBtn">Volver al Menú</button>
+  </div>
+
+  <canvas id="gameCanvas" width="800" height="500"></canvas>
+  <div id="status">Puntuación: 0</div>
+  <div id="scoreRecord"></div>
+  <div id="controlsInfo"></div>
+  <div id="countdownOverlay">3</div>
+
+  <!-- Barras de salud para modo Duel -->
+  <div id="healthBars" style="display:none;">
+    <div>
+      <div class="healthBar"><div id="playerHealthFill" class="healthFill"></div></div>
+      <div class="healthLabel">Jugador</div>
+    </div>
+    <div>
+      <div class="healthBar"><div id="npcHealthFill" class="healthFill"></div></div>
+      <div class="healthLabel">NPC</div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">Created by Jalex</div>
+
+<script>
+  document.addEventListener("keydown", e => {
+  const key = e.key.toLowerCase();
+  const vk = document.querySelector(`.vk-key[data-key="${key}"]`);
+  if (vk) vk.classList.add("active");
+});
+
+document.addEventListener("keyup", e => {
+  const key = e.key.toLowerCase();
+  const vk = document.querySelector(`.vk-key[data-key="${key}"]`);
+  if (vk) vk.classList.remove("active");
+});
+
+  /* PARTICULAS SUTILES */
+  const particleCanvas = document.getElementById("particleCanvas");
+  const pCtx = particleCanvas.getContext("2d");
+  let particles = [];
+  const PARTICLE_COUNT = 50;
+  const colors = ['#ffaa33', '#ffbb44', '#ffaa22', '#ffcc55'];
+  function resizeParticleCanvas() {
+    particleCanvas.width = window.innerWidth;
+    particleCanvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resizeParticleCanvas);
+  resizeParticleCanvas();
+
+  class Particle {
+    constructor() {
+      this.reset();
+    }
+    reset() {
+      this.x = Math.random() * particleCanvas.width;
+      this.y = Math.random() * particleCanvas.height;
+      this.radius = 1 + Math.random() * 2;
+      this.speedX = (Math.random() - 0.5) * 0.2;
+      this.speedY = (Math.random() - 0.5) * 0.2;
+      this.color = colors[Math.floor(Math.random() * colors.length)];
+      this.alpha = 0.2 + Math.random() * 0.3;
+    }
+    update() {
+      this.x += this.speedX;
+      this.y += this.speedY;
+      if(this.x < 0 || this.x > particleCanvas.width || this.y < 0 || this.y > particleCanvas.height) {
+        this.reset();
+      }
+    }
+    draw(ctx) {
+      ctx.save();
+      ctx.globalAlpha = this.alpha;
+      ctx.fillStyle = this.color;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+  for(let i=0; i<PARTICLE_COUNT; i++) {
+    particles.push(new Particle());
+  }
+  function particleLoop() {
+    pCtx.clearRect(0, 0, particleCanvas.width, particleCanvas.height);
+    particles.forEach(p => {
+      p.update();
+      p.draw(pCtx);
+    });
+    requestAnimationFrame(particleLoop);
+  }
+  particleLoop();
+
+  /* --- Juego --- */
+  const mainMenu = document.getElementById("mainMenu");
+  const gameUI = document.getElementById("gameUI");
+  const startDodgeBtn = document.getElementById("startDodgeBtn");
+  const startDuelBtn = document.getElementById("startDuelBtn");
+  const resetBtn = document.getElementById("resetBtn");
+  const backMenuBtn = document.getElementById("backMenuBtn");
+  const npcModeSelect = document.getElementById("npcModeSelect");
+  const npcMoveSelect = document.getElementById("npcMoveSelect");
+  const controlSchemeSelect = document.getElementById("controlSchemeSelect");
+  const canvas = document.getElementById("gameCanvas");
+  const ctx = canvas.getContext("2d");
+  const statusText = document.getElementById("status");
+  const scoreRecordText = document.getElementById("scoreRecord");
+  const controlsInfoText = document.getElementById("controlsInfo");
+  const countdownOverlay = document.getElementById("countdownOverlay");
+  const healthBars = document.getElementById("healthBars");
+  const playerHealthFill = document.getElementById("playerHealthFill");
+  const npcHealthFill = document.getElementById("npcHealthFill");
+
+  let gameMode = "dodge"; // "dodge" o "duel"
+  let simulationStarted = false;
+  let canNPCShoot = false;
+  let countdownInterval = null;
+
+  const player = {
+    x: 100,
+    y: 100,
+    size: 32,
+    speed: 3,
+    color: "lime",
+    vx: 0,
+    vy: 0,
+    hp: 100,
+    maxHp: 100,
+    fireCooldown: 0,
+    sprite: null
+  };
+
+  const npc = {
+    x: 600,
+    y: 300,
+    size: 32,
+    speed: 1.5,
+    color: "red",
+    fireRate: 60,
+    cooldown: 0,
+    move: true,
+    hp: 100,
+    maxHp: 100,
+    shotPatternCounter: 0,
+    sprite: null
+  };
+
+  const bullets = [];
+  let keys = {};
+
+  // Cargar sprites simples base64
+  player.sprite = new Image();
+  npc.sprite = new Image();
+  player.sprite.src = "data:image/svg+xml;base64," + btoa(`
+    <svg width="32" height="32" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="32" cy="32" r="28" fill="lime" stroke="#006600" stroke-width="3"/>
+      <circle cx="32" cy="32" r="10" fill="#00ff00" />
+    </svg>
+  `);
+  npc.sprite.src = "data:image/svg+xml;base64," + btoa(`
+    <svg width="32" height="32" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+      <rect x="4" y="4" width="56" height="56" rx="12" ry="12" fill="red" stroke="#660000" stroke-width="3"/>
+      <circle cx="32" cy="32" r="10" fill="#ff3300" />
+    </svg>
+  `);
+
+  // Eventos teclas
+document.addEventListener("keydown", e => {
+  const key = e.key.toLowerCase();
+  keys[key] = true;
+  updatePlayerVelocity();
+
+  if (gameMode === "duel") {
+    if (key === " " || key === "space") {
+      playerShoot(); // Disparo automático hacia movimiento
+    }
+
+    // Disparo direccional con IJKL
+    const directionMap = {
+      "i": { dx: 0, dy: -1 },
+      "j": { dx: -1, dy: 0 },
+      "k": { dx: 0, dy: 1 },
+      "l": { dx: 1, dy: 0 }
+    };
+
+    if (directionMap[key]) {
+      const dir = directionMap[key];
+      playerShoot(dir.dx, dir.dy);
+    }
+  }
+  });
+  document.addEventListener("keyup", e => {
+    const key = e.key.toLowerCase();
+    keys[key] = false;
+    updatePlayerVelocity();
+  });
+
+  function updatePlayerVelocity() {
+    player.vx = 0;
+    player.vy = 0;
+
+    if (controlSchemeSelect.value === "wasd") {
+      if (keys["w"]) player.vy = -player.speed;
+      else if (keys["s"]) player.vy = player.speed;
+      if (keys["a"]) player.vx = -player.speed;
+      else if (keys["d"]) player.vx = player.speed;
+    } else {
+      if (keys["arrowup"]) player.vy = -player.speed;
+      else if (keys["arrowdown"]) player.vy = player.speed;
+      if (keys["arrowleft"]) player.vx = -player.speed;
+      else if (keys["arrowright"]) player.vx = player.speed;
+    }
+
+    // Normalizar velocidad diagonal
+    if (player.vx !== 0 && player.vy !== 0) {
+      player.vx *= Math.SQRT1_2;
+      player.vy *= Math.SQRT1_2;
+    }
+  }
+
+  // Setup NPC basado en modo y si se mueve
+  function setupNPC() {
+    const mode = npcModeSelect.value;
+    const moveOpt = npcMoveSelect.value;
+    npc.move = (moveOpt === "yes");
+
+    switch (mode) {
+      case "pacifista":
+        npc.fireRate = 90;
+        npc.speed = 1.0;
+        break;
+      case "normal":
+        npc.fireRate = 60;
+        npc.speed = 1.5;
+        break;
+      case "rage":
+        npc.fireRate = 20;
+        npc.speed = 2.5;
+        break;
+    }
+    npc.shotPatternCounter = 0;
+  }
+
+  // Reiniciar juego según modo
+  function resetGame() {
+    if (countdownInterval) {
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+    }
+
+    player.x = 100;
+    player.y = 100;
+    player.vx = 0;
+    player.vy = 0;
+    player.hp = player.maxHp;
+    player.fireCooldown = 0;
+
+    npc.x = 600;
+    npc.y = 300;
+    npc.hp = npc.maxHp;
+    npc.cooldown = 0;
+
+    bullets.length = 0;
+    keys = {};
+
+    score = 0;
+    simulationStarted = true;
+    canNPCShoot = false;
+
+    setupNPC();
+    updateUIForMode();
+
+    statusText.textContent = gameMode === "dodge" ? "Puntuación: 0" : "¡Duelando!";
+    updateRecordText();
+    updateControlsInfo();
+
+    countdownOverlay.style.display = "block";
+    let countdown = 3;
+    countdownOverlay.textContent = countdown;
+    countdownInterval = setInterval(() => {
+      countdown--;
+      if (countdown > 0) {
+        countdownOverlay.textContent = countdown;
+      } else {
+        countdownOverlay.style.display = "none";
+        canNPCShoot = true;
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+      }
+    }, 1000);
+  }
+
+  // Cambiar UI según modo
+  function updateUIForMode() {
+    if(gameMode === "dodge") {
+      healthBars.style.display = "none";
+      scoreRecordText.style.display = "block";
+      statusText.style.display = "block";
+      controlsInfoText.style.display = "block";
+    } else {
+      healthBars.style.display = "flex";
+      scoreRecordText.style.display = "none";
+      statusText.style.display = "block";
+      controlsInfoText.style.display = "block";
+    }
+  }
+
+  // Iniciar modo Dodge
+  startDodgeBtn.addEventListener("click", () => {
+    gameMode = "dodge";
+    startGameTransition();
+  });
+
+  // Iniciar modo Duel
+  startDuelBtn.addEventListener("click", () => {
+    gameMode = "duel";
+    startGameTransition();
+  });
+
+  // Animar transición de menú a juego
+  function startGameTransition() {
+    mainMenu.classList.replace("fade-slide-in", "fade-slide-out");
+    setTimeout(() => {
+      mainMenu.style.display = "none";
+      gameUI.style.display = "block";
+      canvas.style.display = "block";
+      statusText.style.display = "block";
+      controlsInfoText.style.display = "block";
+      updateUIForMode();
+      resetGame();
+    }, 500);
+  }
+
+  // Botón volver menú
+  backMenuBtn.addEventListener("click", () => {
+    simulationStarted = false;
+    canNPCShoot = false;
+    mainMenu.style.display = "flex";
+    mainMenu.classList.replace("fade-slide-out", "fade-slide-in");
+    gameUI.style.display = "none";
+    canvas.style.display = "none";
+    statusText.style.display = "none";
+    controlsInfoText.style.display = "none";
+    healthBars.style.display = "none";
+  });
+
+  // Botón reiniciar
+  resetBtn.addEventListener("click", () => {
+    resetGame();
+  });
+
+  // Variables puntuación
+  let score = 0;
+
+  // Actualizar barras salud
+  function updateHealthBars() {
+    playerHealthFill.style.width = (player.hp / player.maxHp * 100) + "%";
+    npcHealthFill.style.width = (npc.hp / npc.maxHp * 100) + "%";
+  }
+
+  // Lógica disparo jugador en modo Duel
+function playerShoot(dx = null, dy = null) {
+  if (player.fireCooldown > 0) return;
+
+  const speed = 6;
+
+  // Si no se dio dirección manual, usar dirección de movimiento
+  if (dx === null || dy === null) {
+    if (player.vx !== 0 || player.vy !== 0) {
+      if (Math.abs(player.vx) > Math.abs(player.vy)) {
+        dx = player.vx > 0 ? 1 : -1;
+        dy = 0;
+      } else {
+        dy = player.vy > 0 ? 1 : -1;
+        dx = 0;
+      }
+    } else {
+      dx = 0;
+      dy = -1; // Default: disparar hacia arriba
+    }
+  }
+
+  bullets.push({
+    x: player.x,
+    y: player.y,
+    dx: dx * speed,
+    dy: dy * speed,
+    owner: "player"
+  });
+
+  player.fireCooldown = 25; // cooldown frames
+}
+
+  // Lógica IA estratégica para NPC en modo Duel
+  function npcStrategicMove() {
+    // Busca mantenerse a una distancia entre 150 y 250 px
+    const dx = player.x - npc.x;
+    const dy = player.y - npc.y;
+    const dist = Math.hypot(dx, dy);
+
+    const desiredMinDist = 150;
+    const desiredMaxDist = 250;
+
+    if (dist < desiredMinDist) {
+      // Alejarse un poco (mover en dirección opuesta al jugador)
+      npc.x -= (dx / dist) * npc.speed;
+      npc.y -= (dy / dist) * npc.speed;
+    } else if (dist > desiredMaxDist) {
+      // Acercarse al jugador
+      npc.x += (dx / dist) * npc.speed;
+      npc.y += (dy / dist) * npc.speed;
+    } else {
+      // Si está en rango ideal, se mueve lateralmente para complicar
+      // Movimiento lateral perpendicular a vector jugador-npc
+      const lateralSpeed = npc.speed * 0.8;
+      npc.x += (dy / dist) * lateralSpeed;
+      npc.y -= (dx / dist) * lateralSpeed;
+    }
+
+    // Limitar dentro del canvas
+    npc.x = Math.max(npc.size/2, Math.min(canvas.width - npc.size/2, npc.x));
+    npc.y = Math.max(npc.size/2, Math.min(canvas.height - npc.size/2, npc.y));
+  }
+
+  // Lógica disparo NPC en modo Duel (con patrones)
+  function npcShootPattern() {
+    if (npc.cooldown > 0) {
+      npc.cooldown--;
+      return;
+    }
+
+    const speed = 6;
+    npc.shotPatternCounter++;
+
+    if (npcModeSelect.value === "rage") {
+      // Ráfagas cruzadas (4 balas)
+      if (npc.shotPatternCounter % 40 === 0) {
+        bullets.push(
+          {x: npc.x, y: npc.y, dx: speed, dy: 0, owner:"npc"},
+          {x: npc.x, y: npc.y, dx: -speed, dy: 0, owner:"npc"},
+          {x: npc.x, y: npc.y, dx: 0, dy: speed, owner:"npc"},
+          {x: npc.x, y: npc.y, dx: 0, dy: -speed, owner:"npc"}
+        );
+      } else {
+        // Disparo normal apuntando al jugador
+        shootAtPlayer(true);
+      }
+    } else {
+      // Pacifista o normal disparo normal simple
+      shootAtPlayer(true);
+    }
+
+    npc.cooldown = npc.fireRate;
+  }
+
+  // Disparar hacia jugador (con predicción en modo Duel)
+  // if param 'predict' true => se predice un poco la posición futura del jugador
+  function shootAtPlayer(predict=false) {
+    const speed = 6;
+
+    let targetX = player.x;
+    let targetY = player.y;
+
+    if(predict) {
+      // Predicción simple: proyectar posición en base a velocidad jugador y tiempo bala va a tardar
+      const dx = player.vx;
+      const dy = player.vy;
+      const dist = Math.hypot(player.x - npc.x, player.y - npc.y);
+      const timeToHit = dist / speed;
+
+      targetX += dx * timeToHit;
+      targetY += dy * timeToHit;
+    }
+
+    const dx = targetX - npc.x;
+    const dy = targetY - npc.y;
+
+    let dirX = 0;
+    let dirY = 0;
+
+    if (Math.abs(dx) > Math.abs(dy)) {
+      dirX = dx > 0 ? 1 : -1;
+    } else {
+      dirY = dy > 0 ? 1 : -1;
+    }
+
+    bullets.push({
+      x: npc.x,
+      y: npc.y,
+      dx: dirX * speed,
+      dy: dirY * speed,
+      owner: "npc"
+    });
+  }
+
+  // Actualizar todo cada frame
+  function update() {
+    if (!simulationStarted) return;
+
+    // Actualizar jugador (posición y cooldown)
+    player.x += player.vx;
+    player.y += player.vy;
+
+    player.x = Math.max(player.size/2, Math.min(canvas.width - player.size/2, player.x));
+    player.y = Math.max(player.size/2, Math.min(canvas.height - player.size/2, player.y));
+
+    if(player.fireCooldown > 0) player.fireCooldown--;
+
+    if(gameMode === "dodge") {
+      // Mover NPC directo hacia jugador si permitido
+      if(npc.move && canNPCShoot) {
+        const dx = player.x - npc.x;
+        const dy = player.y - npc.y;
+        const dist = Math.hypot(dx, dy);
+        if(dist > 1) {
+          npc.x += (dx / dist) * npc.speed;
+          npc.y += (dy / dist) * npc.speed;
+        }
+      }
+
+      // NPC dispara si puede
+      if(canNPCShoot) {
+        if(npc.cooldown <= 0) {
+          shootAtPlayer(false);
+          npc.cooldown = npc.fireRate;
+        } else {
+          npc.cooldown--;
+        }
+      }
+
+      // Mover balas y colisiones con jugador
+      for(let i = bullets.length - 1; i >= 0; i--) {
+        const b = bullets[i];
+        b.x += b.dx;
+        b.y += b.dy;
+
+        const dist = Math.hypot(b.x - player.x, b.y - player.y);
+        if(dist < player.size/2 + 5 && b.owner === "npc") {
+          simulationStarted = false;
+          canNPCShoot = false;
+          statusText.textContent = `¡Has sido golpeado! Puntuación final: ${Math.floor(score)}`;
+          updateRecord(score);
+        }
+
+        // Remover balas fuera de pantalla
+        if(b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) {
+          bullets.splice(i, 1);
+        }
+      }
+
+      // Sumar puntuación por tiempo
+      if(simulationStarted) {
+        score += 0.1;
+        statusText.textContent = `Puntuación: ${Math.floor(score)}`;
+      }
+    } else if(gameMode === "duel") {
+      // Mover NPC con IA estratégica
+      if(npc.move && canNPCShoot) {
+        npcStrategicMove();
+      }
+
+      // Disparos NPC
+      if(canNPCShoot) npcShootPattern();
+
+      // Mover balas y manejar colisiones
+      for(let i = bullets.length - 1; i >= 0; i--) {
+        const b = bullets[i];
+        b.x += b.dx;
+        b.y += b.dy;
+
+        // Colisión balas con jugador
+        if(b.owner === "npc") {
+          const dist = Math.hypot(b.x - player.x, b.y - player.y);
+          if(dist < player.size/2 + 5) {
+            player.hp -= 10;
+            bullets.splice(i,1);
+            if(player.hp <= 0) {
+              simulationStarted = false;
+              canNPCShoot = false;
+              statusText.textContent = "¡Has perdido! NPC gana.";
+            }
+          }
+        } else if(b.owner === "player") {
+          // Colisión balas con NPC
+          const dist = Math.hypot(b.x - npc.x, b.y - npc.y);
+          if(dist < npc.size/2 + 5) {
+            npc.hp -= 10;
+            bullets.splice(i,1);
+            if(npc.hp <= 0) {
+              simulationStarted = false;
+              canNPCShoot = false;
+              statusText.textContent = "¡Felicidades! Has ganado el duelo.";
+            }
+          }
+        }
+
+        // Remover balas fuera de pantalla
+        if(b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) {
+          bullets.splice(i, 1);
+        }
+      }
+
+      updateHealthBars();
+    }
+  }
+
+  // Dibujar todo cada frame
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Jugador con sprite
+    if(player.sprite.complete) {
+      ctx.drawImage(player.sprite, player.x - player.size/2, player.y - player.size/2, player.size, player.size);
+    } else {
+      ctx.fillStyle = player.color;
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, player.size/2, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    // NPC con sprite
+    if(npc.sprite.complete) {
+      ctx.drawImage(npc.sprite, npc.x - npc.size/2, npc.y - npc.size/2, npc.size, npc.size);
+    } else {
+      ctx.fillStyle = npc.color;
+      ctx.beginPath();
+      ctx.arc(npc.x, npc.y, npc.size/2, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    // Balas
+    ctx.fillStyle = "orange";
+    bullets.forEach(b => {
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, 5, 0, Math.PI*2);
+      ctx.fill();
+    });
+  }
+
+  // Loop principal
+  function gameLoop() {
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
+  }
+
+  // Guardar récord local
+  function updateRecord(newScore) {
+    const currentRecord = parseFloat(localStorage.getItem("npcDodgeHighScore") || "0");
+    if(newScore > currentRecord) {
+      localStorage.setItem("npcDodgeHighScore", newScore);
+      updateRecordText();
+    }
+  }
+  function updateRecordText() {
+    const record = parseFloat(localStorage.getItem("npcDodgeHighScore") || "0");
+    let rango = "🥉 Novato";
+    if(record > 150) rango = "🥇 Imparable";
+    else if(record > 50) rango = "🥈 Ágil";
+    scoreRecordText.textContent = `Récord: ${Math.floor(record)} (${rango})`;
+  }
+
+  // Mostrar controles
+  function updateControlsInfo() {
+    if(controlSchemeSelect.value === "wasd") {
+      controlsInfoText.textContent = "Controles: W A S D para moverse, IJKL para disparar (modo Duel)";
+    } else {
+      controlsInfoText.textContent = "Controles: Flechas ↑ ↓ ← → para moverse, IJKL para disparar (modo Duel)";
+    }
+  }
+
+  // Escuchar cambios controles y NPC
+  controlSchemeSelect.addEventListener("change", () => {
+    updateControlsInfo();
+    updatePlayerVelocity();
+  });
+  npcModeSelect.addEventListener("change", () => setupNPC());
+  npcMoveSelect.addEventListener("change", () => setupNPC());
+
+  updateControlsInfo();
+  updateRecordText();
+  gameLoop();
+
+</script>
+<div id="virtualKeyboard">
+  <div class="vk-row top"><div class="vk-key" data-key="i">I</div></div>
+  <div class="vk-row bottom">
+    <div class="vk-key" data-key="j">J</div>
+    <div class="vk-key" data-key="k">K</div>
+    <div class="vk-key" data-key="l">L</div>
+  </div>
+</div>
+
+</body>
+</html>
